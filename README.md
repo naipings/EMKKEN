@@ -1,10 +1,10 @@
-# Rapid Knowledge Quantification with EMK-KEN in Academic Research
+# EMK-KEN: A High-Performance Approach for Assessing Knowledge Value in Citation Network
 
 <img width="800" alt="emkken_plot" src="./assets/model1.jpg">
 
 ## About
 
-This is the github repo for the paper ["Rapid Knowledge Quantification with EMK-KEN in Academic Research"]().
+This is the github repo for the paper ["EMK-KEN: A High-Performance Approach for Assessing Knowledge Value in Citation Network"]().
 By integrating Mamba and KAN architectures, the model addresses the inefficiency and poor generalization of traditional methods in large-scale networks. The framework consists of two key modules:
 
 - Semantic Feature Extraction: MetaFP and Mamba process metadata and long-sequence text embeddings to learn contextual representations.
