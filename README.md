@@ -1,6 +1,6 @@
 # EMK-KEN: A High-Performance Approach for Assessing Knowledge Value in Citation Network
 
-<img width="800" alt="emkken_plot" src="./assets/model1.jpg">
+<img width="800" alt="emkken_plot" src="./assets/model.jpg">
 
 ## About
 
@@ -10,7 +10,7 @@ By integrating Mamba and KAN architectures, the model addresses the inefficiency
 - Semantic Feature Extraction: MetaFP and Mamba process metadata and long-sequence text embeddings to learn contextual representations.
 - Structural Information Capture: KAN leverages structural differences across domains to model complex dependencies in citation networks.
 
-Extensive experiments on 8 cross-domain benchmark datasets demonstrate that EMK-KEN outperforms state-of-the-art models (e.g., GNNs, Transformers) in accuracy, F1-score, and AUC, with faster inference and stronger robustness. Ablation studies confirm the necessity of components (e.g., causal convolution, SSMs), while hyperparameter analysis highlights tunable sensitivity. This work provides a powerful tool for literature analysis and knowledge mining, with potential extensions to broader knowledge evaluation tasks.
+Extensive experiments on 10 cross-domain benchmark datasets demonstrate that EMK-KEN outperforms state-of-the-art models (e.g., GNNs, Transformers) in accuracy, F1-score, and AUC, with faster inference and stronger robustness. Ablation studies confirm the necessity of components (e.g., causal convolution, SSMs), while hyperparameter analysis highlights tunable sensitivity. This work provides a powerful tool for literature analysis and knowledge mining, with potential extensions to broader knowledge evaluation tasks.
 
 ## Installation
 EMKKEN can be installed directly from GitHub.

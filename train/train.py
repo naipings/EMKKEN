@@ -620,8 +620,8 @@ def objective(trial: optuna.Trial) -> float:
         - Hidden units: Integer in [32, 512] (step 16)
         - Batch size: Integer in [32, 256] (step 16)
         - Hidden dimension: Integer in [64, 320] (step 16)
-        - T_max (CosineAnnealingLR): Integer in [20, 120]
-        - Epochs: Integer in [30, 70]
+        - T_max (CosineAnnealingLR): Integer in [100, 520]
+        - Epochs: Integer in [80, 500]
     """
     # Define hyperparameter search space
     hparams = {
