@@ -24,6 +24,7 @@ class MamST(torch.nn.Module):
         dropout_rate1 (float, optional): Dropout rate after first Mamba block. Default: 0.5
         dropout_rate2 (float, optional): Dropout rate after second Mamba block. Default: 0.5
     """
+
     def __init__(self,
                  num_node_features,
                  hidden_dim,
@@ -38,7 +39,11 @@ class MamST(torch.nn.Module):
         self.features = num_node_features
 
         # Metadata processing layers
-        self.fc = nn.Linear(1, hidden_dim // num_node_features)
+        if self.features > 0:
+            self.fc = nn.Linear(1, hidden_dim // num_node_features)
+        else:
+            self.fc = nn.Linear(1, hidden_dim)  # When features are set to 0, directly set it to hidden_im
+
         self.relu = nn.ReLU()
         self.meta_fc = nn.Linear(hidden_dim + 1, hidden_dim)
 
@@ -64,32 +69,46 @@ class MamST(torch.nn.Module):
             tuple: Processed metadata (torch.Tensor) and embeddings (torch.Tensor)
         """
         # Split features into metadata and embeddings
-        embedding = x[:, self.features:]
-        meta = x[:, :self.features]
+        if self.features > 0:
+            embedding = x[:, self.features:]
+            meta = x[:, :self.features]
+        else:
+            # If there is no metadata, simply use x as the embedding
+            embedding = x
 
         # Process metadata features
-        meta = meta.unsqueeze(2)
-        meta = self.fc(meta)
-        meta = self.relu(meta)
-        meta = meta.view(meta.size(0), -1)
+        if self.features > 0:
+            meta = meta.unsqueeze(2)
+            meta = self.fc(meta)
+            meta = self.relu(meta)
+            meta = meta.view(meta.size(0), -1)
 
         # Incorporate temporal encoding
         if date_encoding is not None:
             date_encoding = date_encoding.unsqueeze(-1) if date_encoding.dim() == 1 else date_encoding
-            meta = torch.cat([meta, date_encoding], dim=-1)
+            if self.features > 0:
+                meta = torch.cat([meta, date_encoding], dim=-1)
+            else:
+                meta = date_encoding
 
-        meta = self.meta_fc(meta)
-        meta = self.relu(meta)
+        if self.features > 0:
+            meta = self.meta_fc(meta)
+            meta = self.relu(meta)
 
         # Mamba processing for metadata
-        meta = meta.unsqueeze(1)  # (batch_size, 1, feature_dim)
-        meta = self.MC1(meta)
-        meta = self.dropout1(meta)
-        meta = meta.squeeze(1)  # (N, hidden_dim)
+        if self.features > 0:
+            meta = meta.unsqueeze(1)  # (batch_size, 1, feature_dim)
+            meta = self.MC1(meta)
+            meta = self.dropout1(meta)
+            meta = meta.squeeze(1)  # (N, hidden_dim)
 
         # Mamba processing for embeddings
         embedding = embedding.unsqueeze(1)
         embedding = self.MC2(embedding)
         embedding = self.dropout2(embedding)
         embedding = embedding.squeeze(1)
-        return meta, embedding
+
+        if self.features > 0:
+            return meta, embedding
+        else:
+            return embedding

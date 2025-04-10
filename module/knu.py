@@ -6,6 +6,7 @@ import numpy as np
 import seaborn as sns
 from mamst import MamST
 
+
 class KNU(nn.Module):
     """
     KANflex Neural Unit with Kolmogorov-Arnold Networks (KAN) for graph-centric classification.
@@ -15,14 +16,17 @@ class KNU(nn.Module):
 
     Args:
         MamST (nn.Module): Pretrained Mamba-based spatio-temporal processor
-        num_node_features (int): Dimension of processed node features from MamST
+        num_node_features (int): Number of raw metadata features per node
+        input_node_features (int): Dimension of processed node features from MamST
         output_dim (int): Number of target classes
         mlp_hidden_dim (int): Hidden dimension for KAN layers
         dropout_rate (float, optional): Dropout rate after KAN layers. Default: 0.5
     """
+
     def __init__(self,
                  MamST,
                  num_node_features,
+                 input_node_features,
                  output_dim,
                  mlp_hidden_dim,
                  dropout_rate=0.5
@@ -32,11 +36,12 @@ class KNU(nn.Module):
         self.num_node_features = num_node_features
 
         # KAN-based feature processors
-        self.meta_kan = KAN([num_node_features, mlp_hidden_dim // 2], base_activation=nn.ReLU)
+        self.meta_kan = KAN([input_node_features, mlp_hidden_dim // 2], base_activation=nn.ReLU)
         self.embedding_kan = KAN([768, mlp_hidden_dim // 2], base_activation=nn.ReLU)
 
         # Prediction layers
         self.final_fc = nn.Linear(mlp_hidden_dim, output_dim)
+        self.final_fc2 = nn.Linear(mlp_hidden_dim // 2, output_dim)
         self.softmax = nn.Softmax(dim=1)
 
         # Regularization
@@ -65,28 +70,52 @@ class KNU(nn.Module):
                 - reg_loss (torch.Tensor): KAN regularization loss
         """
         # Feature extraction
-        meta, embedding = self.MamST(data.x, data.edge_index, data.date_encoding)
+        if hasattr(data, 'date_encoding') and data.date_encoding is not None:
+            result = self.MamST(data.x, data.edge_index, data.date_encoding)
+        else:
+            result = self.MamST(data.x, data.edge_index)
 
-        # Center node selection
-        center_mask = data.is_center.bool()
-        center_meta = meta[center_mask]
-        center_embedding = embedding[center_mask]
+        if self.num_node_features > 0:
+            meta, embedding = result
+        else:
+            embedding = result
 
-        # KAN-based feature transformation
-        center_meta_out = self.meta_kan(center_meta)
-        center_meta_out = self.dropout(center_meta_out)
-        center_embedding_out = self.embedding_kan(center_embedding)
-        center_embedding_out = self.dropout(center_embedding_out)
+        if self.num_node_features > 0:
+            # Center node selection
+            center_mask = data.is_center.bool()
+            center_meta = meta[center_mask]
+            center_embedding = embedding[center_mask]
 
-        # Feature fusion
-        combined = torch.cat([center_meta_out, center_embedding_out], dim=1)
+            # KAN-based feature transformation
+            center_meta_out = self.meta_kan(center_meta)
+            center_meta_out = self.dropout(center_meta_out)
+            center_embedding_out = self.embedding_kan(center_embedding)
+            center_embedding_out = self.dropout(center_embedding_out)
 
-        # Final prediction
-        logits = self.final_fc(combined)
-        preds = self.softmax(logits)
+            # Feature fusion
+            combined = torch.cat([center_meta_out, center_embedding_out], dim=1)
 
-        # Regularization loss calculation
-        reg_loss = self.meta_kan.regularization_loss(1, 0) + self.embedding_kan.regularization_loss(1, 0)
+            # Final prediction
+            logits = self.final_fc(combined)
+            preds = self.softmax(logits)
+
+            # Regularization loss calculation
+            reg_loss = self.meta_kan.regularization_loss(1, 0) + self.embedding_kan.regularization_loss(1, 0)
+        else:
+            # If there is no metadata, use embedding directly
+            center_mask = data.is_center.bool()
+            center_embedding = embedding[center_mask]
+
+            # KAN-based feature transformation
+            center_embedding_out = self.embedding_kan(center_embedding)
+            center_embedding_out = self.dropout(center_embedding_out)
+
+            # Final prediction
+            logits = self.final_fc2(center_embedding_out)
+            preds = self.softmax(logits)
+
+            # Regularization loss calculation
+            reg_loss = self.embedding_kan.regularization_loss(1, 0)
 
         return preds, data.y[center_mask], data.valid_node_ids, data.center_id, reg_loss
 

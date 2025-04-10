@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 import torch.optim as optim
+from typing import Optional, TextIO
 from torch_geometric.nn import GCNConv, GATConv,TransformerConv
 from torch_geometric.loader import  DataLoader
 from imblearn.over_sampling import SMOTE
@@ -59,6 +60,8 @@ def train_and_evaluate(model: nn.Module,
         - Accuracy/F1-Score (Classification)
         - Cohen's Kappa (Inter-rater agreement)
         - MAE/MSE (Regression)
+        - train_times
+        - memory_usage
     """
     # Initialization
     model.to(device)
@@ -71,7 +74,9 @@ def train_and_evaluate(model: nn.Module,
         'f1_scores': {'train': [], 'val': [], 'test': []},
         'kappas': {'train': [], 'val': [], 'test': []},
         'maes': {'train': [], 'val': [], 'test': []},
-        'mses': {'train': [], 'val': [], 'test': []}
+        'mses': {'train': [], 'val': [], 'test': []},
+        'train_times': [],
+        'memory_usage': []
     }
 
     start_time = time.time()  # 记录训练开始时间
@@ -88,6 +93,8 @@ def train_and_evaluate(model: nn.Module,
             metric_containers['train_times'].append(epoch_train_time)
 
             # 记录内存使用
+            memory_allocated = None
+            memory_reserved = None
             if torch.cuda.is_available():
                 memory_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # 转换为MB
                 memory_reserved = torch.cuda.memory_reserved() / (1024 * 1024)  # 转换为MB
@@ -116,7 +123,7 @@ def train_and_evaluate(model: nn.Module,
                 best_val_f1 = test_metrics['f1']
 
             # Log recording and terminal output
-            _log_metrics(epoch, train_metrics, val_metrics, test_metrics, log_file)
+            _log_metrics(epoch, train_metrics, val_metrics, test_metrics, log_file, epoch_train_time, memory_allocated, memory_reserved)
 
         end_time = time.time()  # 记录训练结束时间
         total_train_time = end_time - start_time
@@ -145,7 +152,8 @@ def _run_epoch(model: nn.Module,
                 device: torch.device,
                 criterion: nn.Module,
                 optimizer: Optional[optim.Optimizer],
-                is_training: bool) -> dict:
+                is_training: bool,
+               accumulation_steps: 4) -> dict:
     """
     Internal helper function for executing a single training/validation epoch.
 
@@ -175,7 +183,8 @@ def _run_epoch(model: nn.Module,
     model.train(is_training)
     # Disable gradient computation for evaluation
     with torch.set_grad_enabled(is_training):
-        for data in loader:
+        # for data in loader:
+        for i, data in enumerate(loader):
             # Move data to device
             data = data.to(device)
 
@@ -187,8 +196,12 @@ def _run_epoch(model: nn.Module,
             if is_training:
                 total_loss = loss + 1e-5 * reg_loss
                 total_loss.backward()
-                optimizer.step()
-                optimizer.zero_grad()
+                # optimizer.step()
+                # optimizer.zero_grad()
+                # 梯度累积
+                if (i + 1) % accumulation_steps == 0:
+                    optimizer.step()
+                    optimizer.zero_grad()
 
             # Accumulate loss
             epoch_loss += loss.item()
@@ -197,6 +210,9 @@ def _run_epoch(model: nn.Module,
             preds = output.argmax(dim=1).cpu().numpy()
             all_preds.extend(preds)
             all_labels.extend(pooled_labels.cpu().numpy())
+
+        # 清理缓存
+        torch.cuda.empty_cache()
 
     # Calculate metrics
     avg_loss = epoch_loss / len(loader)
@@ -353,7 +369,10 @@ def _log_metrics(epoch: int,
                  train_metrics: dict,
                  val_metrics: dict,
                  test_metrics: dict,
-                 log_file: TextIO) -> None:
+                 log_file: TextIO,
+                 epoch_train_time: float,
+                 memory_allocated: Optional[float] = None,
+                 memory_reserved: Optional[float] = None) -> None:
     """
     Logs training, validation, and test metrics for the current epoch.
 
@@ -363,6 +382,9 @@ def _log_metrics(epoch: int,
         val_metrics (dict): Dictionary of validation metrics.
         test_metrics (dict): Dictionary of test metrics.
         log_file (TextIO): File object for writing logs.
+        epoch_train_time (float): Training time for the current epoch.
+        memory_allocated (float, optional): Allocated memory in MB. Default: None
+        memory_reserved (float, optional): Reserved memory in MB. Default: None
     """
     # Print metrics to console
     print(f"Epoch {epoch + 1}:")
@@ -372,6 +394,9 @@ def _log_metrics(epoch: int,
     print(f"  Kappa: Train {train_metrics['kappa']:.4f}, Val {val_metrics['kappa']:.4f}, Test {test_metrics['kappa']:.4f}")
     print(f"  MAE: Train {train_metrics['mae']:.4f}, Val {val_metrics['mae']:.4f}, Test {test_metrics['mae']:.4f}")
     print(f"  MSE: Train {train_metrics['mse']:.4f}, Val {val_metrics['mse']:.4f}, Test {test_metrics['mse']:.4f}")
+    print(f"  Training Time: {epoch_train_time:.2f} seconds")
+    if memory_allocated is not None and memory_reserved is not None:
+        print(f"  Memory Allocated: {memory_allocated:.2f} MB, Memory Reserved: {memory_reserved:.2f} MB")
     print("-----------------------------------------------------------------------------")
 
     # Write metrics to log file
@@ -382,6 +407,9 @@ def _log_metrics(epoch: int,
     log_file.write(f"  Kappa: Train {train_metrics['kappa']:.4f}, Val {val_metrics['kappa']:.4f}, Test {test_metrics['kappa']:.4f}\n")
     log_file.write(f"  MAE: Train {train_metrics['mae']:.4f}, Val {val_metrics['mae']:.4f}, Test {test_metrics['mae']:.4f}\n")
     log_file.write(f"  MSE: Train {train_metrics['mse']:.4f}, Val {val_metrics['mse']:.4f}, Test {test_metrics['mse']:.4f}\n")
+    log_file.write(f"  Training Time: {epoch_train_time:.2f} seconds\n")
+    if memory_allocated is not None and memory_reserved is not None:
+        log_file.write(f"  Memory Allocated: {memory_allocated:.2f} MB, Memory Reserved: {memory_reserved:.2f} MB\n")
     log_file.write("-----------------------------------------------------------------------------\n")
 
 
@@ -609,9 +637,9 @@ def objective(trial: optuna.Trial) -> float:
         'hidden_units': trial.suggest_int('hidden_units', 32, 512, step=16),
         'batch_size': trial.suggest_int('batch_size', 32, 256, step=16),
         'hidden_dim': trial.suggest_int('hidden_dim', 64, 320, step=16),
-        'T_max': trial.suggest_int('T_max', 20, 120, step=1),
-        'epochs': trial.suggest_int('epochs', 30, 70, step=1),
-        'output_dim': 7,
+        'T_max': trial.suggest_int('T_max', 100, 520, step=1),
+        'epochs': trial.suggest_int('epochs', 80, 500, step=1),
+        'output_dim': 3,
     }
 
     # Log hyperparameters
@@ -620,18 +648,18 @@ def objective(trial: optuna.Trial) -> float:
         log_file.write(f"Trial {trial.number}: Hyperparameters = {hparams}\n")
 
     # Load and split data
-    data_list = torch.load('data_list_enhance.pt')
+    data_list = torch.load('data_list.pt')
     train_data, temp_data = train_test_split(data_list, train_size=0.8, random_state=42)
     val_data, test_data = train_test_split(temp_data, test_size=0.5, random_state=42)
 
     # Create DataLoaders
-    train_loader = DataLoader(train_data, batch_size=hparams['batch_size'], shuffle=True)
-    val_loader = DataLoader(val_data, batch_size=hparams['batch_size'], shuffle=False)
-    test_loader = DataLoader(test_data, batch_size=hparams['batch_size'], shuffle=False)
+    train_loader = DataLoader(train_data, batch_size=hparams['batch_size'], shuffle=True, num_workers=4)
+    val_loader = DataLoader(val_data, batch_size=hparams['batch_size'], shuffle=False, num_workers=4)
+    test_loader = DataLoader(test_data, batch_size=hparams['batch_size'], shuffle=False, num_workers=4)
 
     # Initialize model
     model = EMKKEN(
-        mamba_num_node_features=2,
+        mamba_num_node_features=0,
         mamba_hidden_dim=hparams['hidden_dim'],
         mamba_d_state1=hparams['d_state1'],
         mamba_d_state2=hparams['d_state2'],
