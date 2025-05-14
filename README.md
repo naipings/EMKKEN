@@ -13,7 +13,7 @@
 
 ## Overview🔍
 
-<div style="text-align: center"><img width="800" alt="emkken_plot" src="./assets/model.jpg"></div>
+![model](./assets/model.jpg)
 
 This is the github repo for the paper ["EMK-KEN: A High-Performance Approach for Assessing Knowledge Value in Citation Network"](https://arxiv.org/abs/2502.15704).
 By integrating Mamba and KAN architectures, the model addresses the inefficiency and poor generalization of traditional methods in large-scale networks. The framework consists of two key modules:
