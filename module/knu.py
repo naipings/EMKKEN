@@ -36,8 +36,8 @@ class KNU(nn.Module):
         self.num_node_features = num_node_features
 
         # KAN-based feature processors
-        self.meta_kan = KAN([input_node_features, mlp_hidden_dim // 2], base_activation=nn.ReLU)
-        self.embedding_kan = KAN([768, mlp_hidden_dim // 2], base_activation=nn.ReLU)
+        self.meta_kan = KAN([input_node_features, mlp_hidden_dim, mlp_hidden_dim // 2], base_activation=nn.ReLU)
+        self.embedding_kan = KAN([768, mlp_hidden_dim, mlp_hidden_dim // 2], base_activation=nn.ReLU)
 
         # Prediction layers
         self.final_fc = nn.Linear(mlp_hidden_dim, output_dim)

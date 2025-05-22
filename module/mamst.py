@@ -5,6 +5,8 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 import seaborn as sns
+import torch_geometric
+from torch_geometric.nn import GCNConv
 
 
 class MamST(torch.nn.Module):
@@ -48,9 +50,11 @@ class MamST(torch.nn.Module):
         self.meta_fc = nn.Linear(hidden_dim + 1, hidden_dim)
 
         # Dual Mamba architecture
+        self.GCN = GCNConv(768, 768)
         self.MC1 = Mamba(d_model=hidden_dim, d_state=d_state1, d_conv=d_conv1)
         self.MC2 = Mamba(d_model=768, d_state=d_state2, d_conv=d_conv2)
         # self.MC2 = Mamba2(d_model=768, d_state=64, d_conv=4)
+        self.final_fc = nn.Linear(768 * 2, 768)  # Final linear layer to adjust dimensions
 
         # Regularization
         self.dropout1 = nn.Dropout(dropout_rate1)
@@ -102,13 +106,37 @@ class MamST(torch.nn.Module):
             meta = self.dropout1(meta)
             meta = meta.squeeze(1)  # (N, hidden_dim)
 
-        # Mamba processing for embeddings
-        embedding = embedding.unsqueeze(1)
-        embedding = self.MC2(embedding)
-        embedding = self.dropout2(embedding)
-        embedding = embedding.squeeze(1)
+        # GCN and Mamba processing for embeddings
+        if self.features > 0:
+            # GCN processing
+            gcn_embedding = self.gcn(embedding, edge_index)
+            gcn_embedding = self.relu(gcn_embedding)
+
+            # Mamba processing
+            mamba_embedding = embedding.unsqueeze(1)
+            mamba_embedding = self.MC2(mamba_embedding)
+            mamba_embedding = self.dropout2(mamba_embedding)
+            mamba_embedding = mamba_embedding.squeeze(1)
+
+            # Concatenate GCN and Mamba outputs
+            combined_embedding = torch.cat([gcn_embedding, mamba_embedding], dim=-1)
+            combined_embedding = self.final_fc(combined_embedding)
+        else:
+            # GCN processing
+            gcn_embedding = self.gcn(x, edge_index)
+            gcn_embedding = self.relu(gcn_embedding)
+
+            # Mamba processing
+            mamba_embedding = x.unsqueeze(1)
+            mamba_embedding = self.MC2(mamba_embedding)
+            mamba_embedding = self.dropout2(mamba_embedding)
+            mamba_embedding = mamba_embedding.squeeze(1)
+
+            # Concatenate GCN and Mamba outputs
+            combined_embedding = torch.cat([gcn_embedding, mamba_embedding], dim=-1)
+            combined_embedding = self.final_fc(combined_embedding)
 
         if self.features > 0:
-            return meta, embedding
+            return meta, combined_embedding
         else:
-            return embedding
+            return combined_embedding

@@ -4,8 +4,8 @@ import torch.nn.functional as F
 import math
 import torch.optim as optim
 from typing import Optional, TextIO
-from torch_geometric.nn import GCNConv, GATConv,TransformerConv
-from torch_geometric.loader import  DataLoader
+from torch_geometric.nn import GCNConv, GATConv, TransformerConv, GraphSAGE
+from torch_geometric.loader import DataLoader
 from imblearn.over_sampling import SMOTE
 import random
 from sklearn.preprocessing import StandardScaler
@@ -630,16 +630,30 @@ def objective(trial: optuna.Trial) -> float:
         'dropout_rate': trial.suggest_float('dropout_rate', 0.1, 0.7),
         'dropout_rate1': trial.suggest_float('dropout_rate1', 0.1, 0.7),
         'dropout_rate2': trial.suggest_float('dropout_rate2', 0.1, 0.7),
-        'd_state1': trial.suggest_int('d_state1', 10, 50, step=1),
-        'd_state2': trial.suggest_int('d_state2', 4, 84, step=1),
-        'd_conv1': trial.suggest_int('d_conv1', 2, 8, step=1),
-        'd_conv2': trial.suggest_int('d_conv2', 2, 4, step=1),
         'hidden_units': trial.suggest_int('hidden_units', 32, 512, step=16),
         'batch_size': trial.suggest_int('batch_size', 32, 256, step=16),
         'hidden_dim': trial.suggest_int('hidden_dim', 64, 320, step=16),
         'T_max': trial.suggest_int('T_max', 100, 520, step=1),
         'epochs': trial.suggest_int('epochs', 80, 500, step=1),
         'output_dim': 3,
+        # Mamba参数：
+        'd_state1': trial.suggest_int('d_state1', 10, 50, step=1),
+        'd_state2': trial.suggest_int('d_state2', 4, 84, step=1),
+        'd_conv1': trial.suggest_int('d_conv1', 2, 8, step=1),
+        'd_conv2': trial.suggest_int('d_conv2', 2, 4, step=1),
+        'expand': trial.suggest_int('expand', 1, 4, step=1),
+        'dt_min': trial.suggest_float('dt_min', 1e-5, 0.01),
+        'dt_max': trial.suggest_float('dt_max', 0.01, 0.5),
+        'dt_init': trial.suggest_categorical('dt_init', ["constant", "random"]),
+        'dt_scale': trial.suggest_float('dt_scale', 0.5, 2.0),
+        'dt_init_floor': trial.suggest_float('dt_init_floor', 1e-5, 0.01),
+        # KAN参数：
+        'grid_size': trial.suggest_int('grid_size', 3, 50, step=1),
+        'spline_order': trial.suggest_int('spline_order', 1, 10, step=1),
+        'scale_noise': trial.suggest_float('scale_noise', 0.01, 0.5),
+        'scale_base': trial.suggest_float('scale_base', 0.5, 2.0),
+        'scale_spline': trial.suggest_float('scale_spline', 0.5, 2.0),
+        'grid_eps': trial.suggest_float('grid_eps', 0.01, 0.5)
     }
 
     # Log hyperparameters
